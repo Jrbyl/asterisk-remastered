@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asterisk Remastered</title>
+  <style>
+    :root {
+      --bg-top: #04151f;
+      --bg-bottom: #0a2239;
+      --panel: rgba(3, 16, 26, 0.88);
+      --line: rgba(184, 242, 255, 0.35);
+      --ink: #f4fbff;
+      --muted: #9dc1cf;
+      --accent: #7df9ff;
+      --gold: #ffd166;
+      --danger: #ff6b6b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top, rgba(125, 249, 255, 0.18), transparent 32%),
+        linear-gradient(180deg, var(--bg-top), var(--bg-bottom) 60%, #020b12);
+      color: var(--ink);
+      font-family: "Trebuchet MS", "Gill Sans", sans-serif;
+    }
+
+    .shell {
+      width: min(1040px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 22px;
+      background: linear-gradient(180deg, rgba(10, 24, 36, 0.96), rgba(3, 12, 20, 0.96));
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(10px);
+    }
+
+    .masthead {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: baseline;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 3vw, 3rem);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink);
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      max-width: 46rem;
+      line-height: 1.5;
+    }
+
+    .badges {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .badge {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--muted);
+      background: rgba(125, 249, 255, 0.08);
+      font-size: 0.92rem;
+      white-space: nowrap;
+    }
+
+    .viewport {
+      position: relative;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(184, 242, 255, 0.28);
+      background: #02070d;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      background: transparent;
+    }
+
+    .footer {
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 0.98rem;
+      line-height: 1.5;
+    }
+
+    .footer strong {
+      color: var(--ink);
+    }
+
+    @media (max-width: 700px) {
+      body {
+        padding: 12px;
+      }
+
+      .shell {
+        padding: 14px;
+        border-radius: 18px;
+      }
+
+      .footer {
+        font-size: 0.92rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="masthead">
+      <div>
+        <h1>Asterisk Remastered</h1>
+        <p class="subtitle">
+          Pilot the spark across the screen, dodge 2x2 block obstacles, and hit the exit gate on the right. Hold
+          <strong>Enter</strong> to rise, release it to fall.
+        </p>
+      </div>
+      <div class="badges" aria-label="Game highlights">
+        <span class="badge">Single-file Canvas build</span>
+        <span class="badge">Persistent high score</span>
+        <span class="badge">Countdown + sound + glow trail</span>
+      </div>
+    </section>
+
+    <div class="viewport">
+      <canvas id="game" width="960" height="540" aria-label="Asterisk game canvas"></canvas>
+    </div>
+
+    <section class="footer">
+      <div><strong>Controls:</strong> Hold <strong>Enter</strong> to rise. Release to fall. Press <strong>Enter</strong> after a crash to restart.</div>
+      <div><strong>Goal:</strong> Reach the glowing gap on the right wall. Every level adds more obstacles, more speed, and a tighter escape window.</div>
+    </section>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const WIDTH = canvas.width;
+    const HEIGHT = canvas.height;
+    const TOP_WALL = 28;
+    const BOTTOM_WALL = HEIGHT - 28;
+    const START_X = 62;
+    const EXIT_X = WIDTH - 30;
+    const CENTER_Y = HEIGHT / 2;
+    const PLAYER_RADIUS = 8;
+    const OBSTACLE_CELL = 10;
+    const OBSTACLE_SIZE = OBSTACLE_CELL * 2;
+    const HIGH_SCORE_KEY = "asterisk-remastered-high-score";
+
+    const stars = Array.from({ length: 90 }, () => ({
+      x: Math.random() * WIDTH,
+      y: Math.random() * HEIGHT,
+      size: Math.random() * 2.2 + 0.6,
+      speed: Math.random() * 22 + 12
+    }));
+
+    const state = {
+      mode: "title",
+      enterHeld: false,
+      level: 1,
+      levelsCleared: 0,
+      score: 0,
+      highScore: Number(localStorage.getItem(HIGH_SCORE_KEY) || 0),
+      player: { x: START_X, y: CENTER_Y },
+      trail: [],
+      particles: [],
+      obstacles: [],
+      speed: 0,
+      verticalSpeed: 0,
+      gapHeight: 0,
+      hue: 195,
+      countdown: 0,
+      countdownLabel: "",
+      overlayFlash: 0,
+      lastTime: performance.now()
+    };
+
+    let audioContext = null;
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function randomBetween(min, max) {
+      return Math.random() * (max - min) + min;
+    }
+
+    function ensureAudio() {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtor) {
+        return;
+      }
+
+      if (!audioContext) {
+        audioContext = new AudioCtor();
+      }
+
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
+    }
+
+    function playTone(frequency, duration, type, volume, when = 0) {
+      if (!audioContext) {
+        return;
+      }
+
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const startAt = audioContext.currentTime + when;
+
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, startAt);
+
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + duration + 0.03);
+    }
+
+    function playLevelSound() {
+      ensureAudio();
+      playTone(520, 0.12, "triangle", 0.045, 0);
+      playTone(680, 0.14, "triangle", 0.04, 0.09);
+      playTone(860, 0.18, "sine", 0.035, 0.18);
+    }
+
+    function playCrashSound() {
+      ensureAudio();
+      playTone(240, 0.14, "sawtooth", 0.05, 0);
+      playTone(180, 0.18, "sawtooth", 0.04, 0.08);
+      playTone(120, 0.24, "square", 0.03, 0.16);
+    }
+
+    function syncHighScore() {
+      if (state.score > state.highScore) {
+        state.highScore = state.score;
+        localStorage.setItem(HIGH_SCORE_KEY, String(state.highScore));
+      }
+    }
+
+    function scoreForProgress() {
+      const progress = clamp((state.player.x - START_X) / (EXIT_X - START_X), 0, 1);
+      return state.levelsCleared * 250 + Math.floor(progress * 100);
+    }
+
+    function spawnBurst(x, y, count, hue) {
+      for (let index = 0; index < count; index += 1) {
+        const angle = (Math.PI * 2 * index) / count + Math.random() * 0.5;
+        const speed = randomBetween(50, 180);
+        state.particles.push({
+          x,
+          y,
+          dx: Math.cos(angle) * speed,
+          dy: Math.sin(angle) * speed,
+          life: randomBetween(0.45, 0.9),
+          size: randomBetween(2, 6),
+          hue: hue + randomBetween(-12, 12)
+        });
+      }
+    }
+
+    function startCountdown(label, seconds) {
+      state.countdownLabel = label;
+      state.countdown = seconds;
+      state.mode = "countdown";
+      state.overlayFlash = 0.8;
+      state.trail.length = 0;
+    }
+
+    function generateLevel(level) {
+      state.speed = 170 + (level - 1) * 16;
+      state.verticalSpeed = 190 + (level - 1) * 12;
+      state.gapHeight = Math.max(86, 176 - (level - 1) * 10);
+      state.hue = (195 + level * 22) % 360;
+      state.obstacles.length = 0;
+
+      const obstacleCount = 4 + level * 3;
+      let attempts = 0;
+
+      while (state.obstacles.length < obstacleCount && attempts < 5000) {
+        attempts += 1;
+
+        const x = Math.round(randomBetween(150, WIDTH - 150));
+        const y = Math.round(randomBetween(TOP_WALL + 18, BOTTOM_WALL - OBSTACLE_SIZE - 18));
+        const centerX = x + OBSTACLE_SIZE / 2;
+        const centerY = y + OBSTACLE_SIZE / 2;
+
+        const nearSpawnLane = centerX < 190 && Math.abs(centerY - CENTER_Y) < 95;
+        const nearExitGap = centerX > WIDTH - 150 && Math.abs(centerY - CENTER_Y) < state.gapHeight / 2 + 40;
+
+        if (nearSpawnLane || nearExitGap) {
+          continue;
+        }
+
+        const overlaps = state.obstacles.some((obstacle) =>
+          x < obstacle.x + OBSTACLE_SIZE + 28 &&
+          x + OBSTACLE_SIZE + 28 > obstacle.x &&
+          y < obstacle.y + OBSTACLE_SIZE + 28 &&
+          y + OBSTACLE_SIZE + 28 > obstacle.y
+        );
+
+        if (!overlaps) {
+          state.obstacles.push({ x, y });
+        }
+      }
+
+      state.player.x = START_X;
+      state.player.y = CENTER_Y;
+    }
+
+    function startNewGame() {
+      state.level = 1;
+      state.levelsCleared = 0;
+      state.score = 0;
+      state.trail.length = 0;
+      state.particles.length = 0;
+      generateLevel(state.level);
+      startCountdown("Round Start", 3.2);
+    }
+
+    function startNextLevel() {
+      state.level += 1;
+      generateLevel(state.level);
+      startCountdown("Level Clear", 2.1);
+    }
+
+    function circleHitsRect(cx, cy, radius, rect) {
+      const nearestX = clamp(cx, rect.x, rect.x + OBSTACLE_SIZE);
+      const nearestY = clamp(cy, rect.y, rect.y + OBSTACLE_SIZE);
+      const dx = cx - nearestX;
+      const dy = cy - nearestY;
+      return (dx * dx) + (dy * dy) <= radius * radius;
+    }
+
+    function playerInsideGap(y) {
+      const gapTop = CENTER_Y - state.gapHeight / 2;
+      const gapBottom = CENTER_Y + state.gapHeight / 2;
+      return y - PLAYER_RADIUS > gapTop && y + PLAYER_RADIUS < gapBottom;
+    }
+
+    function crash() {
+      state.mode = "gameover";
+      state.score = scoreForProgress();
+      syncHighScore();
+      spawnBurst(state.player.x, state.player.y, 22, 8);
+      state.overlayFlash = 1;
+      playCrashSound();
+    }
+
+    function clearLevel() {
+      state.levelsCleared += 1;
+      state.score = state.levelsCleared * 250;
+      syncHighScore();
+      spawnBurst(state.player.x, state.player.y, 18, state.hue + 40);
+      playLevelSound();
+      startNextLevel();
+    }
+
+    function updateStars(dt) {
+      const starSpeedBoost = state.mode === "playing" ? state.speed * 0.14 : 12;
+      for (const star of stars) {
+        star.x -= (star.speed + starSpeedBoost) * dt;
+        if (star.x < -3) {
+          star.x = WIDTH + 3;
+          star.y = Math.random() * HEIGHT;
+          star.size = Math.random() * 2.2 + 0.6;
+          star.speed = Math.random() * 22 + 12;
+        }
+      }
+    }
+
+    function updateTrail(dt) {
+      for (let index = state.trail.length - 1; index >= 0; index -= 1) {
+        state.trail[index].life -= dt;
+        if (state.trail[index].life <= 0) {
+          state.trail.splice(index, 1);
+        }
+      }
+
+      if (state.mode === "playing") {
+        state.trail.push({
+          x: state.player.x,
+          y: state.player.y,
+          life: 0.4
+        });
+      }
+    }
+
+    function updateParticles(dt) {
+      for (let index = state.particles.length - 1; index >= 0; index -= 1) {
+        const particle = state.particles[index];
+        particle.life -= dt;
+        particle.x += particle.dx * dt;
+        particle.y += particle.dy * dt;
+        particle.dx *= 0.985;
+        particle.dy *= 0.985;
+        particle.dy += 30 * dt;
+
+        if (particle.life <= 0) {
+          state.particles.splice(index, 1);
+        }
+      }
+    }
+
+    function updatePlaying(dt) {
+      const nextX = state.player.x + state.speed * dt;
+      const nextY = state.player.y + (state.enterHeld ? -state.verticalSpeed : state.verticalSpeed) * dt;
+
+      if (nextY - PLAYER_RADIUS <= TOP_WALL || nextY + PLAYER_RADIUS >= BOTTOM_WALL) {
+        crash();
+        return;
+      }
+
+      if (nextX + PLAYER_RADIUS >= EXIT_X) {
+        if (playerInsideGap(nextY)) {
+          clearLevel();
+        } else {
+          crash();
+        }
+        return;
+      }
+
+      const hitObstacle = state.obstacles.some((obstacle) => circleHitsRect(nextX, nextY, PLAYER_RADIUS, obstacle));
+      if (hitObstacle) {
+        crash();
+        return;
+      }
+
+      state.player.x = nextX;
+      state.player.y = nextY;
+      state.score = scoreForProgress();
+      syncHighScore();
+    }
+
+    function updateCountdown(dt) {
+      state.countdown -= dt;
+      if (state.countdown <= 0) {
+        state.mode = "playing";
+        state.overlayFlash = 0.6;
+      }
+    }
+
+    function update(dt) {
+      state.overlayFlash = Math.max(0, state.overlayFlash - dt * 0.75);
+      updateStars(dt);
+      updateTrail(dt);
+      updateParticles(dt);
+
+      if (state.mode === "countdown") {
+        updateCountdown(dt);
+      } else if (state.mode === "playing") {
+        updatePlaying(dt);
+      }
+    }
+
+    function drawBackground() {
+      const hue = state.hue;
+      const gradient = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+      gradient.addColorStop(0, `hsl(${hue}, 60%, 12%)`);
+      gradient.addColorStop(0.55, "hsl(210, 45%, 9%)");
+      gradient.addColorStop(1, "hsl(210, 55%, 4%)");
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      const glow = ctx.createRadialGradient(WIDTH * 0.2, HEIGHT * 0.2, 40, WIDTH * 0.2, HEIGHT * 0.2, WIDTH * 0.8);
+      glow.addColorStop(0, `hsla(${(hue + 30) % 360}, 90%, 62%, 0.22)`);
+      glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      for (const star of stars) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.55 + star.size / 5})`;
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+      ctx.lineWidth = 1;
+      for (let y = 0; y < HEIGHT; y += 6) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(WIDTH, y);
+        ctx.stroke();
+      }
+    }
+
+    function drawWalls() {
+      ctx.fillStyle = "rgba(235, 247, 255, 0.92)";
+      ctx.shadowColor = "rgba(125, 249, 255, 0.8)";
+      ctx.shadowBlur = 14;
+
+      ctx.fillRect(0, 0, WIDTH, TOP_WALL);
+      ctx.fillRect(0, BOTTOM_WALL, WIDTH, HEIGHT - BOTTOM_WALL);
+
+      const gapTop = CENTER_Y - state.gapHeight / 2;
+      const gapBottom = CENTER_Y + state.gapHeight / 2;
+      ctx.fillRect(EXIT_X, 0, WIDTH - EXIT_X, gapTop);
+      ctx.fillRect(EXIT_X, gapBottom, WIDTH - EXIT_X, HEIGHT - gapBottom);
+
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(125, 249, 255, 0.9)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 10]);
+      ctx.beginPath();
+      ctx.moveTo(EXIT_X - 8, gapTop);
+      ctx.lineTo(EXIT_X - 8, gapBottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+      ctx.font = "700 14px 'Trebuchet MS', sans-serif";
+      ctx.fillText("EXIT", WIDTH - 65, gapTop - 10);
+    }
+
+    function drawObstacles() {
+      ctx.shadowColor = "rgba(255, 255, 255, 0.65)";
+      ctx.shadowBlur = 10;
+
+      for (const obstacle of state.obstacles) {
+        for (let row = 0; row < 2; row += 1) {
+          for (let col = 0; col < 2; col += 1) {
+            const x = obstacle.x + col * OBSTACLE_CELL;
+            const y = obstacle.y + row * OBSTACLE_CELL;
+            ctx.fillStyle = "rgba(248, 252, 255, 0.97)";
+            ctx.fillRect(x + 1, y + 1, OBSTACLE_CELL - 2, OBSTACLE_CELL - 2);
+          }
+        }
+      }
+
+      ctx.shadowBlur = 0;
+    }
+
+    function drawTrail() {
+      for (const puff of state.trail) {
+        const alpha = puff.life / 0.4;
+        ctx.fillStyle = `hsla(${(state.hue + 35) % 360}, 100%, 72%, ${alpha * 0.55})`;
+        ctx.beginPath();
+        ctx.arc(puff.x, puff.y, 2 + alpha * 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawParticles() {
+      for (const particle of state.particles) {
+        ctx.fillStyle = `hsla(${particle.hue}, 100%, 72%, ${particle.life})`;
+        ctx.fillRect(particle.x, particle.y, particle.size, particle.size);
+      }
+    }
+
+    function drawPlayer() {
+      ctx.save();
+      ctx.translate(state.player.x, state.player.y);
+      ctx.shadowColor = "rgba(125, 249, 255, 0.95)";
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = "rgba(255, 247, 204, 0.98)";
+      ctx.beginPath();
+      ctx.arc(0, 0, PLAYER_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+      ctx.beginPath();
+      ctx.arc(-2, -2, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawHud() {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+      ctx.fillRect(18, 16, 270, 84);
+
+      ctx.font = "700 18px 'Trebuchet MS', sans-serif";
+      ctx.fillStyle = "#f4fbff";
+      ctx.fillText(`Level ${state.level}`, 30, 40);
+      ctx.fillText(`Score ${state.score}`, 30, 66);
+      ctx.fillText(`Best ${state.highScore}`, 30, 92);
+
+      ctx.textAlign = "right";
+      ctx.fillStyle = "rgba(244, 251, 255, 0.9)";
+      ctx.fillText(`Speed ${Math.round(state.speed)}`, WIDTH - 28, 40);
+      ctx.fillText(`Gap ${Math.round(state.gapHeight)}`, WIDTH - 28, 66);
+      ctx.fillText(`${state.obstacles.length} obstacles`, WIDTH - 28, 92);
+      ctx.textAlign = "left";
+    }
+
+    function drawOverlay() {
+      if (state.mode === "playing" && state.overlayFlash <= 0) {
+        return;
+      }
+
+      const flashOpacity = clamp(state.overlayFlash * 0.18, 0, 0.18);
+      ctx.fillStyle = `rgba(255, 255, 255, ${flashOpacity})`;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      let title = "";
+      let detail = "";
+      let accent = "#7df9ff";
+
+      if (state.mode === "title") {
+        title = "Asterisk Remastered";
+        detail = "Press Enter to begin";
+      } else if (state.mode === "countdown") {
+        title = Math.ceil(state.countdown).toString();
+        detail = `${state.countdownLabel} - Hold Enter to climb`;
+      } else if (state.mode === "gameover") {
+        title = "Game Over";
+        detail = "Press Enter to try again";
+        accent = "#ff6b6b";
+      }
+
+      if (!title) {
+        return;
+      }
+
+      ctx.fillStyle = "rgba(2, 8, 14, 0.7)";
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      ctx.textAlign = "center";
+      ctx.shadowColor = accent;
+      ctx.shadowBlur = 26;
+      ctx.fillStyle = accent;
+      ctx.font = "700 54px Impact, Haettenschweiler, sans-serif";
+      ctx.fillText(title, WIDTH / 2, HEIGHT / 2 - 12);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(244, 251, 255, 0.92)";
+      ctx.font = "600 22px 'Trebuchet MS', sans-serif";
+      ctx.fillText(detail, WIDTH / 2, HEIGHT / 2 + 34);
+      ctx.font = "500 18px 'Trebuchet MS', sans-serif";
+
+      if (state.mode === "title") {
+        ctx.fillText("Slip through the gate on the right. Walls and blocks are instant death.", WIDTH / 2, HEIGHT / 2 + 72);
+      } else if (state.mode === "gameover") {
+        ctx.fillText(`You cleared ${state.levelsCleared} level${state.levelsCleared === 1 ? "" : "s"} - Best ${state.highScore}`, WIDTH / 2, HEIGHT / 2 + 72);
+      }
+
+      ctx.textAlign = "left";
+    }
+
+    function render() {
+      drawBackground();
+      drawTrail();
+      drawWalls();
+      drawObstacles();
+      drawParticles();
+      drawPlayer();
+      drawHud();
+      drawOverlay();
+    }
+
+    function frame(now) {
+      const dt = Math.min((now - state.lastTime) / 1000, 0.033);
+      state.lastTime = now;
+      update(dt);
+      render();
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener("keydown", (event) => {
+      if (event.code !== "Enter") {
+        return;
+      }
+
+      event.preventDefault();
+      ensureAudio();
+      state.enterHeld = true;
+
+      if (state.mode === "title" || state.mode === "gameover") {
+        startNewGame();
+      }
+    });
+
+    window.addEventListener("keyup", (event) => {
+      if (event.code === "Enter") {
+        event.preventDefault();
+        state.enterHeld = false;
+      }
+    });
+
+    window.addEventListener("blur", () => {
+      state.enterHeld = false;
+    });
+
+    canvas.addEventListener("pointerdown", () => {
+      ensureAudio();
+      state.enterHeld = true;
+      if (state.mode === "title" || state.mode === "gameover") {
+        startNewGame();
+      }
+    });
+
+    window.addEventListener("pointerup", () => {
+      state.enterHeld = false;
+    });
+
+    generateLevel(1);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
