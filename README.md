@@ -1,6 +1,6 @@
 # Asterisk Remastered
 
-Asterisk Remastered is a browser-based remake of the classic 1980s reflex game. This version is built as a single self-contained `index.html` file using HTML and JavaScript, so it runs in any modern browser with no build step or external assets.
+Asterisk Remastered is a browser-based remake of the classic 1980s reflex game. This version is built as a single self-contained `index.html` file using HTML and JavaScript, so it runs in any modern browser with no build step or external assets. Try it out here: https://jrbyl.github.io/asterisk-remastered/
 
 ## How To Play
 
