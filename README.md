@@ -7,6 +7,7 @@ Asterisk Remastered is a browser-based remake of the classic 1980s reflex game. 
 Open `index.html` in a browser.
 
 - Hold `Enter` to rise.
+- On mobile, touch and hold the on-screen button or the game area to rise.
 - Release `Enter` to fall.
 - Reach the glowing gap on the right wall to advance to the next level.
 - Avoid the top and bottom walls and every 2x2 obstacle block.
@@ -20,6 +21,7 @@ Open `index.html` in a browser.
 - Countdown before each run and level.
 - Score, level display, and persistent high score with `localStorage`.
 - Dynamic background colors, glowing trail effects, and simple browser-generated sound effects.
+- Mobile-friendly touch controls with a visible hold-to-rise button.
 
 ## Reflection
 

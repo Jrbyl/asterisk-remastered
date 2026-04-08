@@ -32,6 +32,8 @@
         linear-gradient(180deg, var(--bg-top), var(--bg-bottom) 60%, #020b12);
       color: var(--ink);
       font-family: "Trebuchet MS", "Gill Sans", sans-serif;
+      touch-action: manipulation;
+      overscroll-behavior: none;
     }
 
     .shell {
@@ -42,6 +44,7 @@
       background: linear-gradient(180deg, rgba(10, 24, 36, 0.96), rgba(3, 12, 20, 0.96));
       box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
       backdrop-filter: blur(10px);
+      touch-action: manipulation;
     }
 
     .masthead {
@@ -91,6 +94,7 @@
       overflow: hidden;
       border: 1px solid rgba(184, 242, 255, 0.28);
       background: #02070d;
+      touch-action: none;
     }
 
     canvas {
@@ -99,6 +103,48 @@
       height: auto;
       aspect-ratio: 16 / 9;
       background: transparent;
+      touch-action: none;
+    }
+
+    .mobile-controls {
+      display: none;
+      margin-top: 16px;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .touch-button {
+      appearance: none;
+      border: 1px solid rgba(184, 242, 255, 0.42);
+      border-radius: 18px;
+      padding: 18px 28px;
+      min-width: 260px;
+      background: linear-gradient(180deg, rgba(125, 249, 255, 0.24), rgba(15, 52, 72, 0.95));
+      color: var(--ink);
+      font: 700 1rem "Trebuchet MS", "Gill Sans", sans-serif;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    }
+
+    .touch-button.is-held,
+    .touch-button:active {
+      transform: translateY(2px) scale(0.99);
+      border-color: rgba(255, 247, 204, 0.9);
+      box-shadow: 0 10px 24px rgba(125, 249, 255, 0.22);
+    }
+
+    .mobile-note {
+      margin: 0;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.45;
     }
 
     .footer {
@@ -130,6 +176,20 @@
         font-size: 0.92rem;
       }
     }
+
+    @media (hover: none), (pointer: coarse) {
+      .mobile-controls {
+        display: flex;
+      }
+
+      .touch-button {
+        width: min(100%, 420px);
+      }
+
+      .footer {
+        flex-direction: column;
+      }
+    }
   </style>
 </head>
 <body>
@@ -154,8 +214,13 @@
       <canvas id="game" width="960" height="540" aria-label="Asterisk game canvas"></canvas>
     </div>
 
+    <section class="mobile-controls" aria-label="Mobile controls">
+      <button id="riseButton" class="touch-button" type="button">Touch And Hold To Rise</button>
+      <p class="mobile-note">Mobile mode: hold the button or press on the game area to rise. Release to fall.</p>
+    </section>
+
     <section class="footer">
-      <div><strong>Controls:</strong> Hold <strong>Enter</strong> to rise. Release to fall. Press <strong>Enter</strong> after a crash to restart.</div>
+      <div><strong>Controls:</strong> Hold <strong>Enter</strong> to rise on keyboard, or touch and hold on mobile. Release to fall. Press <strong>Enter</strong> after a crash to restart.</div>
       <div><strong>Goal:</strong> Reach the glowing gap on the right wall. Every level adds more obstacles, more speed, and a tighter escape window.</div>
     </section>
   </main>
@@ -163,6 +228,7 @@
   <script>
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
+    const riseButton = document.getElementById("riseButton");
 
     const WIDTH = canvas.width;
     const HEIGHT = canvas.height;
@@ -205,6 +271,7 @@
     };
 
     let audioContext = null;
+    let lastTouchEnd = 0;
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -227,6 +294,14 @@
       if (audioContext.state === "suspended") {
         audioContext.resume().catch(() => {});
       }
+    }
+
+    function suppressDoubleTapZoom(event) {
+      const now = performance.now();
+      if (now - lastTouchEnd < 320) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
     }
 
     function playTone(frequency, duration, type, volume, when = 0) {
@@ -350,6 +425,21 @@
       state.particles.length = 0;
       generateLevel(state.level);
       startCountdown("Round Start", 3.2);
+    }
+
+    function engageRise() {
+      ensureAudio();
+      state.enterHeld = true;
+      riseButton.classList.add("is-held");
+
+      if (state.mode === "title" || state.mode === "gameover") {
+        startNewGame();
+      }
+    }
+
+    function releaseRise() {
+      state.enterHeld = false;
+      riseButton.classList.remove("is-held");
     }
 
     function startNextLevel() {
@@ -696,35 +786,45 @@
       }
 
       event.preventDefault();
-      ensureAudio();
-      state.enterHeld = true;
-
-      if (state.mode === "title" || state.mode === "gameover") {
-        startNewGame();
-      }
+      engageRise();
     });
 
     window.addEventListener("keyup", (event) => {
       if (event.code === "Enter") {
         event.preventDefault();
-        state.enterHeld = false;
+        releaseRise();
       }
     });
 
     window.addEventListener("blur", () => {
-      state.enterHeld = false;
+      releaseRise();
     });
 
     canvas.addEventListener("pointerdown", () => {
-      ensureAudio();
-      state.enterHeld = true;
-      if (state.mode === "title" || state.mode === "gameover") {
-        startNewGame();
-      }
+      engageRise();
     });
 
+    canvas.addEventListener("touchend", suppressDoubleTapZoom, { passive: false });
+
+    riseButton.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      engageRise();
+    });
+
+    riseButton.addEventListener("touchend", suppressDoubleTapZoom, { passive: false });
+
     window.addEventListener("pointerup", () => {
-      state.enterHeld = false;
+      releaseRise();
+    });
+
+    window.addEventListener("pointercancel", () => {
+      releaseRise();
+    });
+
+    riseButton.addEventListener("pointerleave", () => {
+      if (state.enterHeld) {
+        releaseRise();
+      }
     });
 
     generateLevel(1);
