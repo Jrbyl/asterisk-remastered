@@ -10,6 +10,7 @@ Open `index.html` in a browser.
 - On mobile, touch and hold the on-screen button or the game area to rise.
 - Release `Enter` to fall.
 - Reach the glowing gap on the right wall to advance to the next level.
+- Try to grab the glowing bonus star for extra points before you pass it.
 - Avoid the top and bottom walls and every 2x2 obstacle block.
 - If you crash, the game shows a game-over screen and you can restart with `Enter`.
 
@@ -20,6 +21,7 @@ Open `index.html` in a browser.
 - Increasing difficulty each level through added obstacles, faster movement, and a smaller exit gap.
 - Countdown before each run and level.
 - Score, level display, and persistent high score with `localStorage`.
+- A persistent bonus star each level that awards extra points if you can safely collect it.
 - Dynamic background colors, glowing trail effects, and simple browser-generated sound effects.
 - Mobile-friendly touch controls with a visible hold-to-rise button.
 
