@@ -34,6 +34,10 @@
       font-family: "Trebuchet MS", "Gill Sans", sans-serif;
       touch-action: manipulation;
       overscroll-behavior: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .shell {
@@ -45,6 +49,10 @@
       box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
       backdrop-filter: blur(10px);
       touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .masthead {
@@ -95,6 +103,10 @@
       border: 1px solid rgba(184, 242, 255, 0.28);
       background: #02070d;
       touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     canvas {
@@ -104,6 +116,10 @@
       aspect-ratio: 16 / 9;
       background: transparent;
       touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .mobile-controls {
@@ -130,7 +146,18 @@
       touch-action: none;
       user-select: none;
       -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
       transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    }
+
+    .touch-button:focus {
+      outline: none;
+    }
+
+    .touch-button:focus-visible {
+      outline: 2px solid rgba(255, 247, 204, 0.9);
+      outline-offset: 3px;
     }
 
     .touch-button.is-held,
@@ -440,6 +467,7 @@
     function releaseRise() {
       state.enterHeld = false;
       riseButton.classList.remove("is-held");
+      riseButton.blur();
     }
 
     function startNextLevel() {
@@ -800,11 +828,13 @@
       releaseRise();
     });
 
-    canvas.addEventListener("pointerdown", () => {
+    canvas.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
       engageRise();
     });
 
     canvas.addEventListener("touchend", suppressDoubleTapZoom, { passive: false });
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
     riseButton.addEventListener("pointerdown", (event) => {
       event.preventDefault();
@@ -812,6 +842,7 @@
     });
 
     riseButton.addEventListener("touchend", suppressDoubleTapZoom, { passive: false });
+    riseButton.addEventListener("contextmenu", (event) => event.preventDefault());
 
     window.addEventListener("pointerup", () => {
       releaseRise();
